@@ -101,6 +101,14 @@ const findEnclosingFunction = (
                 innerDecl.children?.find((c: any) => c.type === 'identifier');
               funcName = nameIdent?.text;
               label = 'Method'; // qualified_identifier => registered as Method
+            } else if (innerDecl?.type === 'field_identifier') {
+              // C++ inline method with body inside class: void myMethod() { ... }
+              funcName = innerDecl.text;
+              label = 'Method';
+            } else if (innerDecl?.type === 'operator_name') {
+              // C++ operator overload inside class body: operator[]
+              funcName = innerDecl.text;
+              label = 'Method';
             }
           }
         }

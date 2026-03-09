@@ -353,6 +353,16 @@ const findEnclosingFunctionId = (node: any, filePath: string): string | null => 
                 innerDecl.children?.find((c: any) => c.type === 'identifier');
               funcName = nameIdent?.text;
               label = 'Method'; // qualified_identifier => registered as Method
+            } else if (innerDecl?.type === 'field_identifier') {
+              // C++ inline method with body inside class: void myMethod() { ... }
+              // The function_definition is a direct child of field_declaration_list.
+              // Name node is field_identifier, registered as 'Method'.
+              funcName = innerDecl.text;
+              label = 'Method';
+            } else if (innerDecl?.type === 'operator_name') {
+              // C++ operator overload inside class body: operator[]
+              funcName = innerDecl.text;
+              label = 'Method';
             }
           }
         }
@@ -1166,7 +1176,10 @@ const processFileGroup = (
 
     let tree;
     try {
-      tree = parser.parse(file.content, undefined, { bufferSize: 1024 * 256 });
+      // bufferSize must be >= file size. Use 2× file size, minimum 512KB, maximum 32MB.
+      const fileSizeBytes = Buffer.byteLength(file.content, 'utf8');
+      const bufSize = Math.min(Math.max(fileSizeBytes * 2, 512 * 1024), 32 * 1024 * 1024);
+      tree = parser.parse(file.content, undefined, { bufferSize: bufSize });
     } catch {
       continue;
     }
