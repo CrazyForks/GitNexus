@@ -222,9 +222,13 @@ const extractPatternBinding: PatternBindingExtractor = (
     patternNode = node.childForFieldName('pattern');
     valueNode = node.childForFieldName('value');
   } else if (node.type === 'match_arm') {
-    // match_arm → pattern is in the 'pattern' field
+    // match_arm → pattern field is match_pattern wrapping the actual pattern
+    const matchPatternNode = node.childForFieldName('pattern');
+    // Unwrap match_pattern to get the tuple_struct_pattern inside
+    patternNode = matchPatternNode?.type === 'match_pattern'
+      ? matchPatternNode.firstNamedChild
+      : matchPatternNode;
     // source variable is in the parent match_expression's 'value' field
-    patternNode = node.childForFieldName('pattern');
     const matchExpr = node.parent?.parent; // match_arm → match_block → match_expression
     if (matchExpr?.type === 'match_expression') {
       valueNode = matchExpr.childForFieldName('value');

@@ -2927,4 +2927,43 @@ class Foo {
       expect(flatGet(env, 'user')).toBeUndefined();
     });
   });
+
+  describe('known limitations (documented skip tests)', () => {
+    it.skip('TS destructured for-of: for (const [k, v] of entries) — requires tuple destructuring', () => {
+      // extractVarName returns undefined for array_pattern
+    });
+
+    it.skip('Python tuple unpacking: for key, value in dict.items() — requires pattern_list', () => {
+      // left is pattern_list, not identifier
+    });
+
+    it.skip('TS instanceof narrowing: if (x instanceof User) { x.save() } — needs block-level scoping', () => {
+      // Narrows existing variable, does not introduce new one
+    });
+
+    it.skip('Rust for with .iter(): for user in users.iter() — needs method call iterable resolution', () => {
+      // Iterable is a call_expression, not an identifier
+    });
+
+    it.skip('Ruby block parameter: users.each { |user| } — closure param inference, different feature', () => {
+      // Not a for-loop; requires block/closure parameter inference
+    });
+  });
+
+  describe('match arm scoping — first-writer-wins regression', () => {
+    it('Rust: first match arm binding wins, later arms do not overwrite', () => {
+      const tree = parse(`
+fn process(opt: Option<User>) {
+    match opt {
+        Some(user) => user.save(),
+        None => {},
+    }
+}
+      `, Rust);
+      const { env } = buildTypeEnv(tree, 'rust');
+      // user should be typed from the first arm (Some unwrap)
+      // Known limitation: binding leaks across arms (first-writer-wins)
+      expect(flatGet(env, 'user')).toBe('User');
+    });
+  });
 });
