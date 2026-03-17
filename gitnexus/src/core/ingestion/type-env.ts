@@ -78,15 +78,20 @@ const findPatternBranchScope = (node: SyntaxNode): SyntaxNode | undefined => {
   return undefined;
 };
 
+/** Bare nullable keywords that fastStripNullable must reject. */
+const FAST_NULLABLE_KEYWORDS = new Set(['null', 'undefined', 'void', 'None', 'nil']);
+
 /**
  * Fast-path nullable check: 90%+ of type names are simple identifiers (e.g. "User")
  * that don't need the full stripNullable parse. Only call stripNullable when the
  * string contains nullable markers ('|' for union types, '?' for nullable suffix).
  */
-const fastStripNullable = (typeName: string): string | undefined =>
-  (typeName.indexOf('|') === -1 && typeName.indexOf('?') === -1)
+const fastStripNullable = (typeName: string): string | undefined => {
+  if (FAST_NULLABLE_KEYWORDS.has(typeName)) return undefined;
+  return (typeName.indexOf('|') === -1 && typeName.indexOf('?') === -1)
     ? typeName
     : stripNullable(typeName);
+};
 
 /** Implementation of the lookup logic — shared between TypeEnvironment and the legacy export. */
 const lookupInEnv = (
@@ -346,10 +351,10 @@ const createClassNameLookup = (
  * they can contain arrow functions with typed parameters.
  */
 const SKIP_SUBTREE_TYPES = new Set([
-  // String/template literals
-  'string',              'string_literal',       'template_string',
+  // Plain string literals (NOT template_string — it contains interpolated expressions
+  // that can hold arrow functions with typed parameters, e.g. `${(x: T) => x}`)
+  'string',              'string_literal',
   'string_content',      'string_fragment',      'heredoc_body',
-  'concatenated_string',
   // Comments
   'comment',             'line_comment',         'block_comment',
   // Numeric/boolean/null literals
@@ -569,6 +574,8 @@ export const buildTypeEnv = (
     // (JS uses variable_declarator/name/value, Rust uses let_declaration/pattern/value,
     // Python uses assignment/left/right, Go uses short_var_declaration/expression_list).
     if (config.extractPendingAssignment && config.declarationNodeTypes.has(node.type)) {
+      // scopeEnv is guaranteed to exist here because declarationNodeTypes is a subset
+      // of interestingNodeTypes, so extractTypeBinding already created the scope map above.
       const scopeEnv = env.get(scope);
       if (scopeEnv) {
         const pending = config.extractPendingAssignment(node, scopeEnv);
