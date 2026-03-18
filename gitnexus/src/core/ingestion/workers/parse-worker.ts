@@ -1097,16 +1097,34 @@ const processFileGroup = (
               } else if (receiverNode) {
                 // Receiver is a member_expression (field access like user.address.save()).
                 // Extract object and property so processCallsFromExtracted can resolve the field type.
-                const objectNode = receiverNode.childForFieldName?.('object')
-                  ?? receiverNode.childForFieldName?.('value')
-                  ?? receiverNode.childForFieldName?.('operand')
-                  ?? receiverNode.childForFieldName?.('expression');
-                const propertyNode = receiverNode.childForFieldName?.('property')
-                  ?? receiverNode.childForFieldName?.('field')
-                  ?? receiverNode.childForFieldName?.('name');
-                if (objectNode && propertyNode) {
-                  const objectName = objectNode.text;
-                  const fieldName = propertyNode.text;
+                let objectName: string | undefined;
+                let fieldName: string | undefined;
+
+                // Kotlin/Swift: navigation_expression — object is first child, property inside navigation_suffix
+                if (receiverNode.type === 'navigation_expression') {
+                  for (const child of receiverNode.children ?? []) {
+                    if (child.type === 'navigation_suffix') {
+                      for (const sc of child.children ?? []) {
+                        if (sc.isNamed && sc.type !== '.') { fieldName = sc.text; break; }
+                      }
+                    } else if (child.isNamed && !objectName) {
+                      objectName = child.text;
+                    }
+                  }
+                } else {
+                  // General: try standard field names used across grammars
+                  const objectNode = receiverNode.childForFieldName?.('object')
+                    ?? receiverNode.childForFieldName?.('value')
+                    ?? receiverNode.childForFieldName?.('operand')
+                    ?? receiverNode.childForFieldName?.('expression');
+                  const propertyNode = receiverNode.childForFieldName?.('property')
+                    ?? receiverNode.childForFieldName?.('field')
+                    ?? receiverNode.childForFieldName?.('name');
+                  if (objectNode) objectName = objectNode.text;
+                  if (propertyNode) fieldName = propertyNode.text;
+                }
+
+                if (objectName && fieldName) {
                   receiverFieldAccess = { objectName, fieldName };
                   // Try resolving the object's type immediately from TypeEnv
                   const objectType = typeEnv.lookup(objectName, callNode);

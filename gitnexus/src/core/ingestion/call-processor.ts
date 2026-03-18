@@ -276,26 +276,17 @@ export const processCalls = async (
       if (callForm === 'member' && !receiverTypeName && !receiverName) {
         const receiverNode = extractReceiverNode(nameNode);
         if (receiverNode && !CALL_EXPRESSION_TYPES.has(receiverNode.type)) {
-          // receiverNode is a member_expression — extract object.property
-          const objectNode = receiverNode.childForFieldName?.('object')
-            ?? receiverNode.childForFieldName?.('value')
-            ?? receiverNode.childForFieldName?.('operand')
-            ?? receiverNode.childForFieldName?.('expression');
-          const propertyNode = receiverNode.childForFieldName?.('property')
-            ?? receiverNode.childForFieldName?.('field')
-            ?? receiverNode.childForFieldName?.('name');
-          if (objectNode && propertyNode) {
-            const objectName = objectNode.text;
-            const propertyName = propertyNode.text;
+          const parts = extractMemberAccessParts(receiverNode);
+          if (parts) {
             // Resolve the object's type from TypeEnv
-            let objectType = typeEnv ? typeEnv.lookup(objectName, callNode) : undefined;
+            let objectType = typeEnv ? typeEnv.lookup(parts.objectName, callNode) : undefined;
             if (!objectType && verifiedReceivers.size > 0) {
               const enclosingFunc = findEnclosingFunction(callNode, file.path, ctx);
               const funcName = enclosingFunc ? extractFuncNameFromSourceId(enclosingFunc) : '';
-              objectType = lookupReceiverType(verifiedReceivers, funcName, objectName);
+              objectType = lookupReceiverType(verifiedReceivers, funcName, parts.objectName);
             }
             if (objectType) {
-              receiverTypeName = resolveFieldAccessType(objectType, propertyName, file.path, ctx);
+              receiverTypeName = resolveFieldAccessType(objectType, parts.propertyName, file.path, ctx);
             }
           }
         }
@@ -612,6 +603,66 @@ const lookupReceiverType = (
  *
  * @returns The resolved type of the deepest field access, or undefined if resolution fails.
  */
+/**
+ * Extract object and property names from a member-access AST node.
+ * Handles cross-language AST variations:
+ * - TS/JS: member_expression with `object`/`property` fields
+ * - C#: member_access_expression with `expression`/`name` fields
+ * - Go: selector_expression with `operand`/`field` fields
+ * - Rust/C++: field_expression with `value`/`field` fields
+ * - Kotlin: navigation_expression with first child as object and navigation_suffix child containing property
+ * - Python: attribute with `object`/`attribute` fields
+ */
+const extractMemberAccessParts = (
+  node: any,
+): { objectName: string; propertyName: string } | undefined => {
+  // Kotlin/Swift: navigation_expression — object is first child, property is inside navigation_suffix
+  if (node.type === 'navigation_expression') {
+    let objectNode: any = null;
+    let propertyNode: any = null;
+    for (const child of node.children ?? []) {
+      if (child.type === 'navigation_suffix') {
+        // The property identifier is inside the suffix
+        for (const sc of child.children ?? []) {
+          if (sc.isNamed && sc.type !== '.') {
+            propertyNode = sc;
+            break;
+          }
+        }
+      } else if (child.isNamed && !objectNode) {
+        objectNode = child;
+      }
+    }
+    if (objectNode && propertyNode) {
+      return { objectName: objectNode.text, propertyName: propertyNode.text };
+    }
+    return undefined;
+  }
+
+  // Python: attribute node — `object` and `attribute` fields
+  if (node.type === 'attribute') {
+    const objectNode = node.childForFieldName?.('object');
+    const attrNode = node.childForFieldName?.('attribute');
+    if (objectNode && attrNode) {
+      return { objectName: objectNode.text, propertyName: attrNode.text };
+    }
+    return undefined;
+  }
+
+  // General: try standard field names used across grammars
+  const objectNode = node.childForFieldName?.('object')
+    ?? node.childForFieldName?.('value')
+    ?? node.childForFieldName?.('operand')
+    ?? node.childForFieldName?.('expression');
+  const propertyNode = node.childForFieldName?.('property')
+    ?? node.childForFieldName?.('field')
+    ?? node.childForFieldName?.('name');
+  if (objectNode && propertyNode) {
+    return { objectName: objectNode.text, propertyName: propertyNode.text };
+  }
+  return undefined;
+};
+
 const resolveFieldAccessType = (
   receiverName: string,
   fieldName: string,

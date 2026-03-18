@@ -318,6 +318,21 @@ export const findEnclosingClassId = (node: any, filePath: string): string | null
         }
       }
     }
+    // Go: type_declaration wrapping a struct_type (type User struct { ... })
+    // field_declaration → field_declaration_list → struct_type → type_spec → type_declaration
+    if (current.type === 'type_declaration') {
+      const typeSpec = current.children?.find((c: any) => c.type === 'type_spec');
+      if (typeSpec) {
+        const typeBody = typeSpec.childForFieldName?.('type');
+        if (typeBody?.type === 'struct_type' || typeBody?.type === 'interface_type') {
+          const nameNode = typeSpec.childForFieldName?.('name');
+          if (nameNode) {
+            const label = typeBody.type === 'struct_type' ? 'Struct' : 'Interface';
+            return generateId(label, `${filePath}:${nameNode.text}`);
+          }
+        }
+      }
+    }
     if (CLASS_CONTAINER_TYPES.has(current.type)) {
       // Rust impl_item: for `impl Trait for Struct {}`, pick the type after `for`
       if (current.type === 'impl_item') {
