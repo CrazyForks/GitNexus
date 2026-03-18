@@ -64,7 +64,7 @@ import { extractSimpleTypeName } from '../type-extractors/shared.js';
  *
  * Returns the normalized type name, or undefined if no type can be extracted.
  */
-const extractPropertyDeclaredType = (definitionNode: any, language: SupportedLanguages): string | undefined => {
+const extractPropertyDeclaredType = (definitionNode: any): string | undefined => {
   if (!definitionNode) return undefined;
 
   // Strategy 1: Look for a `type` or `type_annotation` named field
@@ -1218,7 +1218,7 @@ const processFileGroup = (
       } else if (nodeLabel === 'Property' && definitionNode) {
         // Extract the declared type for property/field nodes.
         // Walk the definition node for type annotation children.
-        declaredType = extractPropertyDeclaredType(definitionNode, language);
+        declaredType = extractPropertyDeclaredType(definitionNode);
       }
 
       result.nodes.push({

@@ -255,7 +255,7 @@ export const GO_QUERIES = `
 ; Struct fields — named field declarations inside struct types
 (field_declaration_list
   (field_declaration
-    name: (field_identifier) @name)) @definition.property
+    name: (field_identifier) @name) @definition.property)
 
 ; Struct embedding (anonymous fields = inheritance)
 (type_declaration
