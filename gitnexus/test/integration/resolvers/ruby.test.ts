@@ -124,15 +124,15 @@ describe('Ruby require_relative, heritage & property resolution', () => {
     expect(props).toContain('email');
   });
 
-  it('emits HAS_METHOD from User to attr_reader :name', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const edge = hasMethod.find(e => e.source === 'User' && e.target === 'name');
+  it('emits HAS_PROPERTY from User to attr_reader :name', () => {
+    const hasProperty = getRelationships(result, 'HAS_PROPERTY');
+    const edge = hasProperty.find(e => e.source === 'User' && e.target === 'name');
     expect(edge).toBeDefined();
   });
 
-  it('emits HAS_METHOD from BaseModel to attr_accessor :id', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const edge = hasMethod.find(e => e.source === 'BaseModel' && e.target === 'id');
+  it('emits HAS_PROPERTY from BaseModel to attr_accessor :id', () => {
+    const hasProperty = getRelationships(result, 'HAS_PROPERTY');
+    const edge = hasProperty.find(e => e.source === 'BaseModel' && e.target === 'id');
     expect(edge).toBeDefined();
   });
 

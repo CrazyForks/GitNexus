@@ -135,7 +135,7 @@ interface ParsedRelationship {
   id: string;
   sourceId: string;
   targetId: string;
-  type: 'DEFINES' | 'HAS_METHOD';
+  type: 'DEFINES' | 'HAS_METHOD' | 'HAS_PROPERTY';
   confidence: number;
   reason: string;
 }
@@ -1045,10 +1045,10 @@ const processFileGroup = (
                 });
                 if (propEnclosingClassId) {
                   result.relationships.push({
-                    id: generateId('HAS_METHOD', `${propEnclosingClassId}->${nodeId}`),
+                    id: generateId('HAS_PROPERTY', `${propEnclosingClassId}->${nodeId}`),
                     sourceId: propEnclosingClassId,
                     targetId: nodeId,
-                    type: 'HAS_METHOD',
+                    type: 'HAS_PROPERTY',
                     confidence: 1.0,
                     reason: '',
                   });
@@ -1286,13 +1286,14 @@ const processFileGroup = (
         reason: '',
       });
 
-      // ── HAS_METHOD: link method/constructor/property to enclosing class ──
+      // ── HAS_METHOD / HAS_PROPERTY: link member to enclosing class ──
       if (enclosingClassId) {
+        const memberEdgeType = nodeLabel === 'Property' ? 'HAS_PROPERTY' : 'HAS_METHOD';
         result.relationships.push({
-          id: generateId('HAS_METHOD', `${enclosingClassId}->${nodeId}`),
+          id: generateId(memberEdgeType, `${enclosingClassId}->${nodeId}`),
           sourceId: enclosingClassId,
           targetId: nodeId,
-          type: 'HAS_METHOD',
+          type: memberEdgeType,
           confidence: 1.0,
           reason: '',
         });

@@ -329,13 +329,14 @@ const processParsingSequential = async (
 
       graph.addRelationship(relationship);
 
-      // ── HAS_METHOD: link method/constructor/property to enclosing class ──
+      // ── HAS_METHOD / HAS_PROPERTY: link member to enclosing class ──
       if (enclosingClassId) {
+        const memberEdgeType = nodeLabel === 'Property' ? 'HAS_PROPERTY' : 'HAS_METHOD';
         graph.addRelationship({
-          id: generateId('HAS_METHOD', `${enclosingClassId}->${nodeId}`),
+          id: generateId(memberEdgeType, `${enclosingClassId}->${nodeId}`),
           sourceId: enclosingClassId,
           targetId: nodeId,
-          type: 'HAS_METHOD',
+          type: memberEdgeType,
           confidence: 1.0,
           reason: '',
         });

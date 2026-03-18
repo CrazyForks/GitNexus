@@ -53,16 +53,21 @@ describe('TypeScript heritage resolution', () => {
     ]);
   });
 
-  it('emits HAS_METHOD edges linking methods and properties to classes', () => {
+  it('emits HAS_METHOD edges linking methods to classes', () => {
     const hasMethod = getRelationships(result, 'HAS_METHOD');
-    expect(hasMethod.length).toBe(5);
+    expect(hasMethod.length).toBe(4);
     expect(edgeSet(hasMethod)).toEqual([
       'BaseService → getName',
-      'BaseService → name',
       'ConsoleLogger → log',
       'UserService → getUsers',
       'UserService → log',
     ]);
+  });
+
+  it('emits HAS_PROPERTY edge for class fields', () => {
+    const hasProperty = getRelationships(result, 'HAS_PROPERTY');
+    expect(hasProperty.length).toBe(1);
+    expect(edgeSet(hasProperty)).toEqual(['BaseService → name']);
   });
 
   it('no OVERRIDES edges target Property nodes', () => {

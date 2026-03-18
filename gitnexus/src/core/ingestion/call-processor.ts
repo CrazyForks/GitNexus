@@ -234,9 +234,9 @@ export const processCalls = async (
               });
               if (propEnclosingClassId) {
                 graph.addRelationship({
-                  id: generateId('HAS_METHOD', `${propEnclosingClassId}->${nodeId}`),
+                  id: generateId('HAS_PROPERTY', `${propEnclosingClassId}->${nodeId}`),
                   sourceId: propEnclosingClassId, targetId: nodeId,
-                  type: 'HAS_METHOD', confidence: 1.0, reason: '',
+                  type: 'HAS_PROPERTY', confidence: 1.0, reason: '',
                 });
               }
             }

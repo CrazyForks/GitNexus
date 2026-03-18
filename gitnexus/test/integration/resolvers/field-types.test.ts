@@ -4,7 +4,7 @@
  *
  * Per-language fixtures test:
  * 1. Property nodes are extracted with correct ownerId linkage
- * 2. HAS_METHOD edges link properties to their owning classes
+ * 2. HAS_PROPERTY edges link properties to their owning classes
  * 3. Field-access chain resolution resolves user.address.save() → Address#save
  */
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -39,9 +39,8 @@ describe('Field type resolution (TypeScript)', () => {
     expect(properties).toContain('city');
   });
 
-  it('emits HAS_METHOD edges linking properties to classes', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const propEdges = hasMethod.filter(e => e.targetLabel === 'Property');
+  it('emits HAS_PROPERTY edges linking properties to classes', () => {
+    const propEdges = getRelationships(result, 'HAS_PROPERTY');
     expect(propEdges.length).toBeGreaterThanOrEqual(3);
     expect(edgeSet(propEdges)).toContain('User → address');
     expect(edgeSet(propEdges)).toContain('User → name');
@@ -82,9 +81,8 @@ describe('Field type resolution (Java)', () => {
     expect(properties).toContain('city');
   });
 
-  it('emits HAS_METHOD edges linking properties to classes', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const propEdges = hasMethod.filter(e => e.targetLabel === 'Property');
+  it('emits HAS_PROPERTY edges linking properties to classes', () => {
+    const propEdges = getRelationships(result, 'HAS_PROPERTY');
     expect(propEdges.length).toBeGreaterThanOrEqual(3);
     expect(edgeSet(propEdges)).toContain('User → address');
     expect(edgeSet(propEdges)).toContain('User → name');
@@ -127,9 +125,8 @@ describe('Field type resolution (C#)', () => {
     expect(properties).toContain('City');
   });
 
-  it('emits HAS_METHOD edges linking properties to classes', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const propEdges = hasMethod.filter(e => e.targetLabel === 'Property');
+  it('emits HAS_PROPERTY edges linking properties to classes', () => {
+    const propEdges = getRelationships(result, 'HAS_PROPERTY');
     expect(propEdges.length).toBeGreaterThanOrEqual(3);
     expect(edgeSet(propEdges)).toContain('User → Address');
     expect(edgeSet(propEdges)).toContain('User → Name');
@@ -171,9 +168,8 @@ describe('Field type resolution (Go)', () => {
     expect(properties).toContain('City');
   });
 
-  it('emits HAS_METHOD edges linking struct fields to structs', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const propEdges = hasMethod.filter(e => e.targetLabel === 'Property');
+  it('emits HAS_PROPERTY edges linking struct fields to structs', () => {
+    const propEdges = getRelationships(result, 'HAS_PROPERTY');
     expect(propEdges.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -213,9 +209,8 @@ describe('Field type resolution (Kotlin)', () => {
     expect(properties).toContain('city');
   });
 
-  it('emits HAS_METHOD edges linking properties to classes', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const propEdges = hasMethod.filter(e => e.targetLabel === 'Property');
+  it('emits HAS_PROPERTY edges linking properties to classes', () => {
+    const propEdges = getRelationships(result, 'HAS_PROPERTY');
     expect(propEdges.length).toBeGreaterThanOrEqual(3);
     expect(edgeSet(propEdges)).toContain('User → address');
     expect(edgeSet(propEdges)).toContain('User → name');
@@ -258,9 +253,8 @@ describe('Field type resolution (PHP)', () => {
     expect(properties).toContain('city');
   });
 
-  it('emits HAS_METHOD edges linking properties to classes', () => {
-    const hasMethod = getRelationships(result, 'HAS_METHOD');
-    const propEdges = hasMethod.filter(e => e.targetLabel === 'Property');
+  it('emits HAS_PROPERTY edges linking properties to classes', () => {
+    const propEdges = getRelationships(result, 'HAS_PROPERTY');
     expect(propEdges.length).toBeGreaterThanOrEqual(3);
   });
 
