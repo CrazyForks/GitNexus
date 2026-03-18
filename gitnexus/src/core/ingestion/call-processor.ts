@@ -271,6 +271,35 @@ export const processCalls = async (
           receiverTypeName = receiverName;
         }
       }
+      // Fall back to field-access resolution when the receiver is a member_expression
+      // (e.g. user.address.save() — the receiver of save() is user.address, a field access).
+      if (callForm === 'member' && !receiverTypeName && !receiverName) {
+        const receiverNode = extractReceiverNode(nameNode);
+        if (receiverNode && !CALL_EXPRESSION_TYPES.has(receiverNode.type)) {
+          // receiverNode is a member_expression — extract object.property
+          const objectNode = receiverNode.childForFieldName?.('object')
+            ?? receiverNode.childForFieldName?.('value')
+            ?? receiverNode.childForFieldName?.('operand')
+            ?? receiverNode.childForFieldName?.('expression');
+          const propertyNode = receiverNode.childForFieldName?.('property')
+            ?? receiverNode.childForFieldName?.('field')
+            ?? receiverNode.childForFieldName?.('name');
+          if (objectNode && propertyNode) {
+            const objectName = objectNode.text;
+            const propertyName = propertyNode.text;
+            // Resolve the object's type from TypeEnv
+            let objectType = typeEnv ? typeEnv.lookup(objectName, callNode) : undefined;
+            if (!objectType && verifiedReceivers.size > 0) {
+              const enclosingFunc = findEnclosingFunction(callNode, file.path, ctx);
+              const funcName = enclosingFunc ? extractFuncNameFromSourceId(enclosingFunc) : '';
+              objectType = lookupReceiverType(verifiedReceivers, funcName, objectName);
+            }
+            if (objectType) {
+              receiverTypeName = resolveFieldAccessType(objectType, propertyName, file.path, ctx);
+            }
+          }
+        }
+      }
       // Fall back to chained call resolution when the receiver is a call expression
       // (e.g. svc.getUser().save() — receiver of save() is getUser(), not a simple identifier).
       if (callForm === 'member' && !receiverTypeName && !receiverName) {
@@ -574,6 +603,36 @@ const lookupReceiverType = (
 };
 
 /**
+ * Resolve a property/field access on a typed receiver to determine the field's declared type.
+ * Used when a call's receiver is a member_expression (e.g. `user.address.save()` — the receiver
+ * of `save()` is `user.address` which is a field access, not a method call).
+ *
+ * Walks up to MAX_CHAIN_DEPTH levels of nested member_expression nodes to handle chains
+ * like `user.address.city.getName()`.
+ *
+ * @returns The resolved type of the deepest field access, or undefined if resolution fails.
+ */
+const resolveFieldAccessType = (
+  receiverName: string,
+  fieldName: string,
+  filePath: string,
+  ctx: ResolutionContext,
+): string | undefined => {
+  // Resolve the receiver's type to a class/struct nodeId
+  const typeResolved = ctx.resolve(receiverName, filePath);
+  if (!typeResolved) return undefined;
+  const classDef = typeResolved.candidates.find(
+    d => d.type === 'Class' || d.type === 'Struct' || d.type === 'Interface',
+  );
+  if (!classDef) return undefined;
+
+  const fieldDef = ctx.symbols.lookupFieldByOwner(classDef.nodeId, fieldName);
+  if (!fieldDef?.declaredType) return undefined;
+
+  return extractReturnTypeName(fieldDef.declaredType);
+};
+
+/**
  * Fast path: resolve pre-extracted call sites from workers.
  * No AST parsing — workers already extracted calledName + sourceId.
  */
@@ -635,6 +694,32 @@ export const processCallsFromExtracted = async (
           d => d.type === 'Class' || d.type === 'Interface' || d.type === 'Struct' || d.type === 'Enum',
         )) {
           effectiveCall = { ...effectiveCall, receiverTypeName: effectiveCall.receiverName };
+        }
+      }
+
+      // Step 1c: field-access resolution (e.g. user.address.save())
+      // When the parse-worker captured a receiverFieldAccess, resolve the field's declared type.
+      if (!effectiveCall.receiverTypeName && effectiveCall.receiverFieldAccess) {
+        const { objectName, fieldName } = effectiveCall.receiverFieldAccess;
+        // Resolve the object's type from constructor bindings or class-as-receiver
+        let objectType: string | undefined;
+        if (receiverMap) {
+          const callFuncName = extractFuncNameFromSourceId(effectiveCall.sourceId);
+          objectType = lookupReceiverType(receiverMap, callFuncName, objectName);
+        }
+        if (!objectType) {
+          const typeResolved = ctx.resolve(objectName, effectiveCall.filePath);
+          if (typeResolved?.candidates.some(d =>
+            d.type === 'Class' || d.type === 'Interface' || d.type === 'Struct' || d.type === 'Enum',
+          )) {
+            objectType = objectName;
+          }
+        }
+        if (objectType) {
+          const fieldType = resolveFieldAccessType(objectType, fieldName, effectiveCall.filePath, ctx);
+          if (fieldType) {
+            effectiveCall = { ...effectiveCall, receiverTypeName: fieldType };
+          }
         }
       }
 

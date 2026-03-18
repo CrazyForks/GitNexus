@@ -6,6 +6,7 @@ import { generateId } from '../../lib/utils.js';
 import { SymbolTable } from './symbol-table.js';
 import { ASTCache } from './ast-cache.js';
 import { getLanguageFromFilename, yieldToEventLoop, DEFINITION_CAPTURE_KEYS, getDefinitionNodeFromCaptures, findEnclosingClassId, extractMethodSignature } from './utils.js';
+import { extractSimpleTypeName } from './type-extractors/shared.js';
 import { isNodeExported } from './export-detection.js';
 import { detectFrameworkFromAST } from './framework-detection.js';
 import { typeConfigs } from './type-extractors/index.js';
@@ -81,6 +82,7 @@ const processParsingWithWorkers = async (
       symbolTable.add(sym.filePath, sym.name, sym.nodeId, sym.type, {
         parameterCount: sym.parameterCount,
         returnType: sym.returnType,
+        declaredType: sym.declaredType,
         ownerId: sym.ownerId,
       });
     }
@@ -275,9 +277,40 @@ const processParsingSequential = async (
       const needsOwner = nodeLabel === 'Method' || nodeLabel === 'Constructor' || nodeLabel === 'Property' || nodeLabel === 'Function';
       const enclosingClassId = needsOwner ? findEnclosingClassId(nameNode || definitionNodeForRange, file.path) : null;
 
+      // Extract declared type for Property nodes (field/property type annotations)
+      let declaredType: string | undefined;
+      if (nodeLabel === 'Property' && definitionNode) {
+        const typeNode = definitionNode.childForFieldName?.('type');
+        if (typeNode) {
+          declaredType = extractSimpleTypeName(typeNode) ?? typeNode.text?.trim();
+        }
+        if (!declaredType) {
+          // TypeScript pattern: look for type_annotation child
+          for (let i = 0; i < definitionNode.childCount; i++) {
+            const child = definitionNode.child(i);
+            if (child?.type === 'type_annotation') {
+              for (let j = 0; j < child.childCount; j++) {
+                const typeChild = child.child(j);
+                if (typeChild && typeChild.type !== ':') {
+                  declaredType = extractSimpleTypeName(typeChild) ?? typeChild.text?.trim();
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        // Java: type is on the parent field_declaration
+        if (!declaredType && definitionNode.parent) {
+          const parentType = definitionNode.parent.childForFieldName?.('type');
+          if (parentType) declaredType = extractSimpleTypeName(parentType) ?? undefined;
+        }
+      }
+
       symbolTable.add(file.path, nodeName, nodeId, nodeLabel, {
         parameterCount: methodSig?.parameterCount,
         returnType: methodSig?.returnType,
+        declaredType,
         ownerId: enclosingClassId ?? undefined,
       });
 

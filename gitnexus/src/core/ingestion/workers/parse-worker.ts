@@ -48,6 +48,66 @@ import { generateId } from '../../../lib/utils.js';
 import { extractNamedBindings } from '../named-binding-extraction.js';
 import { appendKotlinWildcard } from '../resolvers/index.js';
 import { callRouters } from '../call-routing.js';
+import { extractSimpleTypeName } from '../type-extractors/shared.js';
+
+// ============================================================================
+// Property type extraction
+// ============================================================================
+
+/**
+ * Extract the declared type from a field/property AST definition node.
+ * Handles common patterns across languages:
+ * - TypeScript: `name: Type` → type_annotation child
+ * - Java: `Type name` → type child on field_declaration
+ * - C#: `Type Name { get; set; }` → type child on property_declaration
+ * - Go: `Name Type` → type child on field_declaration
+ *
+ * Returns the normalized type name, or undefined if no type can be extracted.
+ */
+const extractPropertyDeclaredType = (definitionNode: any, language: SupportedLanguages): string | undefined => {
+  if (!definitionNode) return undefined;
+
+  // Strategy 1: Look for a `type` or `type_annotation` named field
+  const typeNode = definitionNode.childForFieldName?.('type');
+  if (typeNode) {
+    const typeName = extractSimpleTypeName(typeNode);
+    if (typeName) return typeName;
+    // Fallback: use the raw text (for complex types like User[] or List<User>)
+    const text = typeNode.text?.trim();
+    if (text && text.length < 100) return text;
+  }
+
+  // Strategy 2: Walk children looking for type_annotation (TypeScript pattern)
+  for (let i = 0; i < definitionNode.childCount; i++) {
+    const child = definitionNode.child(i);
+    if (!child) continue;
+    if (child.type === 'type_annotation') {
+      // Type annotation has the actual type as a child
+      for (let j = 0; j < child.childCount; j++) {
+        const typeChild = child.child(j);
+        if (typeChild && typeChild.type !== ':') {
+          const typeName = extractSimpleTypeName(typeChild);
+          if (typeName) return typeName;
+          const text = typeChild.text?.trim();
+          if (text && text.length < 100) return text;
+        }
+      }
+    }
+  }
+
+  // Strategy 3: For Java field_declaration, the type is a sibling of variable_declarator
+  // AST: (field_declaration type: (type_identifier) declarator: (variable_declarator ...))
+  const parentDecl = definitionNode.parent;
+  if (parentDecl) {
+    const parentType = parentDecl.childForFieldName?.('type');
+    if (parentType) {
+      const typeName = extractSimpleTypeName(parentType);
+      if (typeName) return typeName;
+    }
+  }
+
+  return undefined;
+};
 
 // ============================================================================
 // Types for serializable results
@@ -87,6 +147,7 @@ interface ParsedSymbol {
   type: string;
   parameterCount?: number;
   returnType?: string;
+  declaredType?: string;
   ownerId?: string;
 }
 
@@ -118,6 +179,12 @@ export interface ExtractedCall {
    * Length is capped at MAX_CHAIN_DEPTH (3).
    */
   receiverCallChain?: string[];
+  /**
+   * Field-access receiver when the receiver is a member_expression (not a call or identifier).
+   * For `user.address.save()`, the `save` ExtractedCall gets
+   * receiverFieldAccess = { objectName: 'user', fieldName: 'address' }.
+   */
+  receiverFieldAccess?: { objectName: string; fieldName: string };
 }
 
 export interface ExtractedHeritage {
@@ -1009,6 +1076,8 @@ const processFileGroup = (
             // from constructor bindings. receiverTypeName is intentionally left unset here —
             // the chain resolver in processCallsFromExtracted needs the base type as input and
             // produces the final receiver type as output.
+            let receiverFieldAccess: { objectName: string; fieldName: string } | undefined;
+
             if (callForm === 'member' && receiverName === undefined && !receiverTypeName) {
               const receiverNode = extractReceiverNode(callNameNode);
               if (receiverNode && CALL_EXPRESSION_TYPES.has(receiverNode.type)) {
@@ -1025,6 +1094,27 @@ const processFileGroup = (
                     receiverTypeName = typeEnv.lookup(receiverName, callNode);
                   }
                 }
+              } else if (receiverNode) {
+                // Receiver is a member_expression (field access like user.address.save()).
+                // Extract object and property so processCallsFromExtracted can resolve the field type.
+                const objectNode = receiverNode.childForFieldName?.('object')
+                  ?? receiverNode.childForFieldName?.('value')
+                  ?? receiverNode.childForFieldName?.('operand')
+                  ?? receiverNode.childForFieldName?.('expression');
+                const propertyNode = receiverNode.childForFieldName?.('property')
+                  ?? receiverNode.childForFieldName?.('field')
+                  ?? receiverNode.childForFieldName?.('name');
+                if (objectNode && propertyNode) {
+                  const objectName = objectNode.text;
+                  const fieldName = propertyNode.text;
+                  receiverFieldAccess = { objectName, fieldName };
+                  // Try resolving the object's type immediately from TypeEnv
+                  const objectType = typeEnv.lookup(objectName, callNode);
+                  if (objectType) {
+                    receiverName = objectName;
+                    receiverTypeName = objectType;
+                  }
+                }
               }
             }
 
@@ -1037,6 +1127,7 @@ const processFileGroup = (
               ...(receiverName !== undefined ? { receiverName } : {}),
               ...(receiverTypeName !== undefined ? { receiverTypeName } : {}),
               ...(receiverCallChain !== undefined ? { receiverCallChain } : {}),
+              ...(receiverFieldAccess !== undefined ? { receiverFieldAccess } : {}),
             });
           }
         }
@@ -1109,6 +1200,7 @@ const processFileGroup = (
 
       let parameterCount: number | undefined;
       let returnType: string | undefined;
+      let declaredType: string | undefined;
       if (nodeLabel === 'Function' || nodeLabel === 'Method' || nodeLabel === 'Constructor') {
         const sig = extractMethodSignature(definitionNode);
         parameterCount = sig.parameterCount;
@@ -1123,6 +1215,10 @@ const processFileGroup = (
             if (docReturn) returnType = docReturn;
           }
         }
+      } else if (nodeLabel === 'Property' && definitionNode) {
+        // Extract the declared type for property/field nodes.
+        // Walk the definition node for type annotation children.
+        declaredType = extractPropertyDeclaredType(definitionNode, language);
       }
 
       result.nodes.push({
@@ -1157,6 +1253,7 @@ const processFileGroup = (
         type: nodeLabel,
         ...(parameterCount !== undefined ? { parameterCount } : {}),
         ...(returnType !== undefined ? { returnType } : {}),
+        ...(declaredType !== undefined ? { declaredType } : {}),
         ...(enclosingClassId ? { ownerId: enclosingClassId } : {}),
       });
 

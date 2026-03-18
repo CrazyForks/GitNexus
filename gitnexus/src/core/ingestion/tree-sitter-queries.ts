@@ -62,6 +62,10 @@ export const TYPESCRIPT_QUERIES = `
 (new_expression
   constructor: (identifier) @call.name) @call
 
+; Class properties — public_field_definition covers most TS class fields
+(public_field_definition
+  name: (property_identifier) @name) @definition.property
+
 ; Heritage queries - class extends
 (class_declaration
   name: (type_identifier) @heritage.class
@@ -179,6 +183,11 @@ export const JAVA_QUERIES = `
 (method_declaration name: (identifier) @name) @definition.method
 (constructor_declaration name: (identifier) @name) @definition.constructor
 
+; Fields — typed field declarations inside class bodies
+(field_declaration
+  declarator: (variable_declarator
+    name: (identifier) @name)) @definition.property
+
 ; Imports - capture any import declaration child as source
 (import_declaration (_) @import.source) @import
 
@@ -242,6 +251,11 @@ export const GO_QUERIES = `
 ; Imports
 (import_declaration (import_spec path: (interpreted_string_literal) @import.source)) @import
 (import_declaration (import_spec_list (import_spec path: (interpreted_string_literal) @import.source))) @import
+
+; Struct fields — named field declarations inside struct types
+(field_declaration_list
+  (field_declaration
+    name: (field_identifier) @name)) @definition.property
 
 ; Struct embedding (anonymous fields = inheritance)
 (type_declaration
