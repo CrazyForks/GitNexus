@@ -232,7 +232,7 @@ This phase pushed the system from variable typing into structural object modelli
 
 **What was delivered**: Activated the dormant Tier 2b `pendingCallResults` infrastructure across 11 languages (TS, JS, Java, Kotlin, C#, Go, Rust, Python, PHP, Ruby, C++). Swift excluded. Tier 2b now runs before Tier 2a copy-propagation, enabling mixed chains like `const user = getUser(); const alias = user; alias.save()`.
 
-**Scope**: Phase 9A (simple call-result variable binding) is fully implemented. Phases 9B (loop inference from assigned call results) and 9C (broader method-chain inference) remain as future work.
+**Scope**: Phase 9A (simple call-result variable binding) and Phase 9C (unified fixpoint with field access + method-call-result binding) are fully implemented. Phase 9B (loop inference from assigned call results) remains open — it requires either a second walk pass after the fixpoint or treating for-loop variables as pending items, because for-loop bindings (Tier 0b) execute during `walk()` before the fixpoint runs, so fixpoint-resolved types can't retroactively update loop variable bindings.
 
 ### Goal
 

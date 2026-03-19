@@ -7,7 +7,7 @@ When the code contains a call such as `user.save()`, the resolver tries to deter
 This system is designed to be:
 
 - **Conservative** — it prefers missing a binding over introducing a misleading one
-- **Single-pass** — bindings are collected during a single AST walk, with a limited post-pass for assignment propagation
+- **Walk + fixpoint** — bindings are collected during a single AST walk, then a unified fixpoint loop iterates over pending assignments (copy, callResult, fieldAccess, methodCallResult) until no new bindings are produced
 - **Scope-aware** — function-local bindings are isolated from file-level bindings
 - **Per-file** — the environment is built for one file at a time, though it may consult the global `SymbolTable` for validation in specific cases
 
@@ -292,16 +292,20 @@ const alias = user
 const other = alias
 ```
 
-This is handled after the main walk through a single pass over pending assignments.
-
-This supports simple forward propagation, but there is no iterative fixpoint step. For example:
+This is handled after the main walk through a unified fixpoint loop over all pending assignments (copy, callResult, fieldAccess, methodCallResult). The loop iterates until no new bindings are produced (max 10 iterations), enabling arbitrary-depth mixed chains and reverse-order resolution:
 
 ```typescript
-const b = a
-const a: User = getUser()
+const b = a              // iteration 2: b → User (a now resolved)
+const a: User = getUser()  // iteration 1: a → User
 ```
 
-will not resolve `b`.
+Both `a` and `b` resolve correctly. The fixpoint also handles chains mixing field access and method calls:
+
+```typescript
+const user = getUser()       // callResult → User
+const addr = user.address    // fieldAccess → Address
+const city = addr.getCity()  // methodCallResult → City
+```
 
 ---
 
@@ -392,6 +396,8 @@ So return-type-aware receiver inference already exists in a constrained downstre
 
 ‖ Python class-level annotated attributes (`address: Address`) have `declaredType`, but `self.x` instance attributes do not. Field access binding only works for class-level annotated fields.
 
+**Note on `this`/`self`/`$this` receivers:** Field access and method-call-result binding with `this`/`self`/`$this` as the receiver do not resolve in the fixpoint loop because these keywords are not stored in `scopeEnv`. They are resolved on-demand at call sites via `findEnclosingClassName()` AST walk. This is consistent across all languages and not a regression.
+
 § PHP write access covers instance property writes (`$obj->field = value`) and static property writes (`ClassName::$field = value`). Nullsafe writes (`$obj?->field = value`) are not tracked because this is invalid PHP syntax — null-safe member access on the left-hand side of assignment is a parse error.
 
 ---
@@ -421,11 +427,12 @@ This is enough to materially improve call-edge precision even without implementi
 Important gaps still remain:
 
 - no general cross-file propagation of inferred bindings
-- no fixpoint inference
+- `this`/`self`/`$this` receivers are not resolved in the fixpoint loop (resolved on-demand at call sites via AST walk instead)
 - limited branch-sensitive narrowing outside selected pattern constructs
 - limited Swift support compared with other languages
 - no complete destructuring-based field typing
-- no broad expression-level return-type propagation inside `TypeEnv` (for-loop call-expression iterables are resolved in 7 languages via `ReturnTypeLookup`, but general `var x = f()` assignment propagation is pending)
+- no MRO/inheritance walking for field lookups (`lookupFieldByOwner` is direct-only)
+- for-loop variables bound at walk time cannot see fixpoint-resolved types (Phase 9B gap)
 
 ---
 
